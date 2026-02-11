@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Promises</title>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Poppins:wght@300;500&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS STYLES (Same as before) --- */
+        :root {
+            --primary: #ff6b81;
+            --bg: #2f3542;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text: #2f3542;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: var(--bg);
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text);
+            user-select: none;
+        }
+
+        .stars { position: absolute; width: 100%; height: 100%; z-index: 1; background: radial-gradient(circle at center, #535c68 0%, #2f3542 100%); }
+        .star { position: absolute; background: white; border-radius: 50%; opacity: 0.5; animation: twinkle var(--duration) ease-in-out infinite; }
+
+        .card-container { position: relative; z-index: 10; width: 90%; max-width: 400px; height: 600px; perspective: 1000px; }
+
+        .card {
+            width: 100%; height: 100%; background: var(--card-bg); border-radius: 20px; padding: 30px;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3); text-align: center;
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.6s;
+        }
+
+        .card-header { font-family: 'Dancing Script', cursive; font-size: 2.5rem; color: var(--primary); margin-bottom: 10px; }
+        .card-body { font-size: 1.1rem; line-height: 1.6; color: #57606f; flex-grow: 1; display: flex; align-items: center; justify-content: center; white-space: pre-line; }
+
+        .scanner-container { position: relative; width: 80px; height: 80px; margin-bottom: 20px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .fingerprint { font-size: 3rem; color: #dfe4ea; transition: color 0.3s; }
+        .scanner-ring { position: absolute; top: -10px; left: -10px; width: 100px; height: 100px; border: 2px solid var(--primary); border-radius: 50%; opacity: 0; transform: scale(0.8); }
+        .scanning .fingerprint { color: var(--primary); }
+        .scanning .scanner-ring { opacity: 1; animation: pulse-ring 1s infinite; }
+
+        .instruction { font-size: 0.8rem; color: #a4b0be; margin-top: 10px; opacity: 1; transition: opacity 0.3s; }
+
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95);
+            z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; transition: opacity 0.8s;
+        }
+
+        @keyframes twinkle { 0%, 100% { opacity: 0.2; transform: scale(0.8); } 50% { opacity: 0.8; transform: scale(1.2); } }
+        @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+        .heart-float { position: absolute; color: var(--primary); font-size: 1.5rem; animation: floatUp 2s ease-out forwards; }
+        @keyframes floatUp { to { transform: translateY(-200px) rotate(45deg); opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <audio id="bg-music" loop></audio>
+
+    <div class="stars" id="star-bg"></div>
+
+    <div id="overlay" onclick="startJourney()">
+        <h1 style="font-family: 'Dancing Script'; font-size: 3rem; color: #ff6b81;">Promise Day</h1>
+        <p style="margin-top: 20px;" id="welcome-msg">Loading...</p>
+        <p style="font-size: 0.7rem; margin-top: 50px; opacity: 0.7;">Tap to Begin</p>
+    </div>
+
+    <div class="card-container">
+        <div class="card" id="main-card">
+            <div class="card-header">Promise #1</div>
+            <div class="card-body" id="promise-text">Loading...</div>
+            
+            <div style="text-align: center;">
+                <div class="scanner-container" id="scanner" 
+                     onmousedown="startScan()" onmouseup="stopScan()" 
+                     ontouchstart="startScan()" ontouchend="stopScan()">
+                    <div class="fingerprint">☝️</div>
+                    <div class="scanner-ring"></div>
+                </div>
+                <div class="instruction" id="instruction-text">Hold to Seal this Promise</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let configData = {};
+        let currentIndex = 0;
+        let scanTimer;
+        const scanDuration = 1500;
+
+        // UI Elements
+        const card = document.getElementById('main-card');
+        const titleEl = document.querySelector('.card-header');
+        const bodyEl = document.getElementById('promise-text');
+        const scanner = document.getElementById('scanner');
+        const instruction = document.getElementById('instruction-text');
+        const welcomeMsg = document.getElementById('welcome-msg');
+        const musicPlayer = document.getElementById('bg-music');
+
+        // --- FETCH CONFIG ---
+        async function init() {
+            try {
+                const response = await fetch('config.json');
+                if (!response.ok) throw new Error("Config load failed");
+                
+                configData = await response.json();
+                
+                // Setup Music
+                musicPlayer.src = configData.music;
+
+                // Setup Welcome Screen
+                welcomeMsg.innerText = `For my future, I don’t know yet… but I believe, ${configData.couple.herName}`;
+                
+                // Preload first promise (but don't show until tap)
+                loadPromise(0);
+                
+                console.log("Config loaded successfully!");
+            } catch (error) {
+                console.error(error);
+                welcomeMsg.innerText = "Error: Please use a Local Server (VS Code Live Server) to load JSON!";
+                welcomeMsg.style.color = "red";
+            }
+        }
+
+        // --- HELPER: REPLACE PLACEHOLDERS ---
+        function formatText(text) {
+            return text
+                .replace(/{herName}/g, configData.couple.herName)
+                .replace(/{herNickname}/g, configData.couple.herNickname)
+                .replace(/{yourName}/g, configData.couple.yourName);
+        }
+
+        // --- APP LOGIC ---
+        function startJourney() {
+            if (!configData.promises) return; // Wait for config
+            
+            document.getElementById('overlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('overlay').style.display = 'none', 800);
+            musicPlayer.play().catch(e => console.log("Audio requires interaction"));
+        }
+
+        function loadPromise(index) {
+            if (!configData.promises) return;
+            const currentPromise = configData.promises[index];
+
+            // Fade out
+            bodyEl.style.opacity = 0;
+            titleEl.style.opacity = 0;
+            
+            setTimeout(() => {
+                titleEl.innerText = formatText(currentPromise.title);
+                bodyEl.innerText = formatText(currentPromise.text);
+                
+                // Fade in
+                bodyEl.style.opacity = 1;
+                titleEl.style.opacity = 1;
+                
+                // Reset scanner
+                scanner.classList.remove('scanning');
+                instruction.innerText = index === 0 ? "Hold to Begin" : "Hold to Seal Promise";
+                instruction.style.color = "#a4b0be";
+            }, 300);
+        }
+
+        function startScan() {
+            if (currentIndex >= configData.promises.length) return;
+
+            scanner.classList.add('scanning');
+            instruction.innerText = "Sealing Promise...";
+            instruction.style.color = "#ff6b81";
+            if (navigator.vibrate) navigator.vibrate([50]);
+
+            scanTimer = setTimeout(completeScan, scanDuration);
+        }
+
+        function stopScan() {
+            clearTimeout(scanTimer);
+            scanner.classList.remove('scanning');
+            if (currentIndex < configData.promises.length) {
+                instruction.innerText = "Hold to Seal Promise";
+                instruction.style.color = "#a4b0be";
+            }
+        }
+
+        function completeScan() {
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            createHearts();
+            currentIndex++;
+            
+            if (currentIndex < configData.promises.length) {
+                // Card Swap Animation
+                card.style.transform = "scale(0.95) translateY(-10px)";
+                card.style.opacity = "0.5";
+                
+                setTimeout(() => {
+                    loadPromise(currentIndex);
+                    card.style.transform = "scale(1) translateY(0)";
+                    card.style.opacity = "1";
+                }, 400);
+            } else {
+                // Final State
+                titleEl.innerText = "Promises Locked";
+                bodyEl.innerHTML = formatText(`Bas itna kehna tha… tum mere liye special ho.
+– <br> - {yourName}`);
+                scanner.style.display = 
+                instruction.innerText = "Forever & Always";
+            }
+        }
+
+        function createHearts() {
+            for(let i=0; i<10; i++) {
+                const heart = document.createElement('div');
+                heart.className = 'heart-float';
+                heart.innerText = '❤️';
+                heart.style.left = Math.random() * 100 + '%';
+                heart.style.top = '80%';
+                document.body.appendChild(heart);
+                setTimeout(() => heart.remove(), 2000);
+            }
+        }
+
+        // Initialize Background Stars & Config
+        const starContainer = document.getElementById('star-bg');
+        for(let i=0; i<50; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.width = Math.random() * 3 + 'px';
+            star.style.height = star.style.width;
+            star.style.setProperty('--duration', (Math.random() * 3 + 2) + 's');
+            starContainer.appendChild(star);
+        }
+
+        init(); // Start the app
+    </script>
+</body>
+  </html>
+
+
+  
